@@ -45,8 +45,8 @@ const static uint8_t MCP2515_RXB0CTRL_BUKT = 1 << 2;
 const uint32_t CAN_STDMSGID_MAX = 0x7FF;
 const uint8_t SIDL_EXTENDED_MSGID = 1U << 3U;
 
-const static uint MCP2515_IRQ_GPIO = 20;
-const static uint32_t MCP2515_OSC_FREQ = 8000000;
+const static uint MCP2515_IRQ_GPIO = 22; /*clpham: was=20, should be 22*/
+const static uint32_t MCP2515_OSC_FREQ = 16000000; /*clpham: was 8000000*/
 
 volatile struct gs_host_frame tx[MCP2515_TX_BUFS];
 
@@ -162,6 +162,7 @@ void handle_rx(uint8_t rxn) {
     memcpy(rxf.data, &rx[6], rxf.can_dlc);
 
     tud_vendor_write(&rxf, sizeof(rxf));
+    tud_vendor_flush(); /*clpham: Added*/
 }
 
 int main() {
@@ -207,6 +208,7 @@ int main() {
                     assert(tx[txn].echo_id != -1);
 
                     tud_vendor_write(&tx[txn], sizeof(tx[txn]));
+                    tud_vendor_flush(); /*clpham: Added*/
                     tx[txn].echo_id = -1;
 
                     // ack irq

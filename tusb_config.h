@@ -21,4 +21,4 @@
 #define CFG_TUSB_MEM_ALIGN __attribute__((aligned(4)))
 #endif
 
-#define CFG_TUSB_OS OPT_OS_NONE
+#define CFG_TUSB_OS OPT_OS_PICO /*clpham: was OPT_OS_NONE*/
