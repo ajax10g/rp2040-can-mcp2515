@@ -178,6 +178,8 @@ int main() {
     gpio_set_function(PICO_DEFAULT_SPI_TX_PIN, GPIO_FUNC_SPI);
     gpio_init(PICO_DEFAULT_SPI_CSN_PIN);
     gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
 
     gpio_init(MCP2515_IRQ_GPIO);
     gpio_pull_up(MCP2515_IRQ_GPIO);
@@ -193,7 +195,8 @@ int main() {
 
     // transition from config to normal mode
     //mcp2515_set_mode(MCP2515_MODE_SLEEP);
-      
+
+    gpio_put(PICO_DEFAULT_LED_PIN, 1);
     for(;;) {
         while(gpio_get(MCP2515_IRQ_GPIO) == 0) {
             uint8_t status = mcp2515_read_status();
@@ -218,7 +221,6 @@ int main() {
         }
         
         tud_task();
-
 
         if ( tud_vendor_available() ) {
             ssize_t txn = mcp2515_get_free_tx();
