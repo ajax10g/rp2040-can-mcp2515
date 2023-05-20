@@ -11,5 +11,5 @@ add_executable(rp2040-can-mcp2515
   usb_descriptors.c
 )
 target_include_directories(rp2040-can-mcp2515 PRIVATE .)
-target_link_libraries(rp2040-can-mcp2515 pico_stdlib hardware_spi tinyusb_device tinyusb_board)
+target_link_libraries(rp2040-can-mcp2515 pico_stdlib hardware_spi tinyusb_device tinyusb_board pico_multicore)
 pico_add_extra_outputs(rp2040-can-mcp2515)

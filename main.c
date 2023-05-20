@@ -4,6 +4,9 @@
 #include "tusb.h"
 #include "gs_usb.h"
 
+#include <stdio.h>
+#include "pico/multicore.h"
+
 struct usb_control_out_t {
     uint8_t bRequest;
     void *buffer;
@@ -20,6 +23,9 @@ enum mcp2515_mode_t {
 
 #define MCP2515_RX_BUFS 2
 #define MCP2515_TX_BUFS 3
+
+#define FIFO_TOKEN 123
+#define LED_MS 8 // On/Off duration of the LED in milliseconds
 
 const static uint16_t MCP2515_CMD_RESET = 0b11000000;
 const static uint16_t MCP2515_CMD_WRITE = 0b00000010;
@@ -58,6 +64,19 @@ struct usb_control_out_t usb_control_out[] = {
     {GS_USB_BREQ_BITTIMING, &device_bittiming, sizeof(device_bittiming)},
     {GS_USB_BREQ_MODE, &device_mode, sizeof(device_mode)},
 };
+
+void core1_entry(){
+    uint32_t token; //unused variable
+
+    while(true){
+        token = multicore_fifo_pop_blocking();
+
+        gpio_put(PICO_DEFAULT_LED_PIN, 1); // Turn ON the Red LED
+        sleep_ms(LED_MS);
+        gpio_put(PICO_DEFAULT_LED_PIN, 0); // Turn OFF the Red LED
+        sleep_ms(LED_MS);
+    }
+}
 
 void spi_transmit(uint8_t *tx, uint8_t* rx, size_t len) {
     asm volatile("nop \n nop \n nop");
@@ -166,6 +185,7 @@ void handle_rx(uint8_t rxn) {
 }
 
 int main() {
+    stdio_init_all();
     tusb_init();
 
     for(size_t i = 0; i < sizeof(tx) / sizeof(*tx); i++) {
@@ -184,6 +204,9 @@ int main() {
     gpio_init(MCP2515_IRQ_GPIO);
     gpio_pull_up(MCP2515_IRQ_GPIO);
 
+    // Enable the other core
+    multicore_launch_core1(core1_entry);
+
     mcp2515_reset();
     sleep_ms(250);
 
@@ -196,7 +219,7 @@ int main() {
     // transition from config to normal mode
     //mcp2515_set_mode(MCP2515_MODE_SLEEP);
 
-    gpio_put(PICO_DEFAULT_LED_PIN, 1);
+    /*gpio_put(PICO_DEFAULT_LED_PIN, 1);*/
     for(;;) {
         while(gpio_get(MCP2515_IRQ_GPIO) == 0) {
             uint8_t status = mcp2515_read_status();
@@ -219,7 +242,7 @@ int main() {
                 }
             }
         }
-        
+
         tud_task();
 
         if ( tud_vendor_available() ) {
@@ -258,6 +281,10 @@ int main() {
                 // request to send
                 tx[0] = 0b10000000U | (1U << txn);
                 spi_transmit(tx, NULL, 1);
+
+                // Non-blocking signal to the other core
+                if (multicore_fifo_wready())
+                    multicore_fifo_push_blocking(FIFO_TOKEN);
             }
         }
     }
