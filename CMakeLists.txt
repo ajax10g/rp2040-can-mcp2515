@@ -11,5 +11,6 @@ add_executable(rp2040-can-mcp2515
   usb_descriptors.c
 )
 target_include_directories(rp2040-can-mcp2515 PRIVATE .)
-target_link_libraries(rp2040-can-mcp2515 pico_stdlib hardware_spi tinyusb_device tinyusb_board pico_multicore)
+target_link_libraries(rp2040-can-mcp2515 pico_stdlib hardware_spi tinyusb_device tinyusb_board pico_multicore hardware_pio)
 pico_add_extra_outputs(rp2040-can-mcp2515)
+pico_generate_pio_header(rp2040-can-mcp2515 ${CMAKE_CURRENT_LIST_DIR}/ws2812.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR})

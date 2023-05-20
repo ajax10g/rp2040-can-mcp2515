@@ -7,6 +7,10 @@
 #include <stdio.h>
 #include "pico/multicore.h"
 
+#include "hardware/pio.h"
+#include "hardware/clocks.h"
+#include "ws2812.pio.h"
+
 struct usb_control_out_t {
     uint8_t bRequest;
     void *buffer;
@@ -25,7 +29,11 @@ enum mcp2515_mode_t {
 #define MCP2515_TX_BUFS 3
 
 #define FIFO_TOKEN 123
-#define LED_MS 8 // On/Off duration of the LED in milliseconds
+#define LED_MS 3 // On/Off duration of the LED in milliseconds
+
+#define IS_RGBW true
+#define NUM_PIXELS 150
+#define BRIGHTNESS 32
 
 const static uint16_t MCP2515_CMD_RESET = 0b11000000;
 const static uint16_t MCP2515_CMD_WRITE = 0b00000010;
@@ -65,15 +73,31 @@ struct usb_control_out_t usb_control_out[] = {
     {GS_USB_BREQ_MODE, &device_mode, sizeof(device_mode)},
 };
 
+static inline void put_pixel(uint32_t pixel_grb) {
+    pio_sm_put_blocking(pio0, 0, pixel_grb << 8u);
+}
+
+static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {
+    return
+            ((uint32_t) (r) << 8) |
+            ((uint32_t) (g) << 16) |
+            (uint32_t) (b);
+}
+
 void core1_entry(){
     uint32_t token; //unused variable
 
     while(true){
         token = multicore_fifo_pop_blocking();
 
-        gpio_put(PICO_DEFAULT_LED_PIN, 1); // Turn ON the Red LED
+        // Turn ON the Tx Act LED
+        /*gpio_put(PICO_DEFAULT_LED_PIN, 1);*/
+        put_pixel(urgb_u32(0, BRIGHTNESS, 0)); // Green
         sleep_ms(LED_MS);
-        gpio_put(PICO_DEFAULT_LED_PIN, 0); // Turn OFF the Red LED
+
+        // Turn OFF the Tx Act LED
+        /*gpio_put(PICO_DEFAULT_LED_PIN, 0);*/
+        put_pixel(urgb_u32(0, 0, 0)); // OFF
         sleep_ms(LED_MS);
     }
 }
@@ -200,9 +224,20 @@ int main() {
     gpio_set_dir(PICO_DEFAULT_SPI_CSN_PIN, GPIO_OUT);
     gpio_init(PICO_DEFAULT_LED_PIN);
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    gpio_init(PICO_DEFAULT_WS2812_PWR_PIN);
+    gpio_set_dir(PICO_DEFAULT_WS2812_PWR_PIN, GPIO_OUT);
 
     gpio_init(MCP2515_IRQ_GPIO);
     gpio_pull_up(MCP2515_IRQ_GPIO);
+
+
+    // Supply power to the WS2812B
+    gpio_put(PICO_DEFAULT_WS2812_PWR_PIN, 1);
+    PIO pio = pio0;
+    int sm = 0;
+    uint offset = pio_add_program(pio, &ws2812_program);
+    ws2812_program_init(pio, sm, offset, PICO_DEFAULT_WS2812_PIN, 800000, IS_RGBW);
+
 
     // Enable the other core
     multicore_launch_core1(core1_entry);
@@ -219,7 +254,7 @@ int main() {
     // transition from config to normal mode
     //mcp2515_set_mode(MCP2515_MODE_SLEEP);
 
-    /*gpio_put(PICO_DEFAULT_LED_PIN, 1);*/
+    gpio_put(PICO_DEFAULT_LED_PIN, 1);
     for(;;) {
         while(gpio_get(MCP2515_IRQ_GPIO) == 0) {
             uint8_t status = mcp2515_read_status();
