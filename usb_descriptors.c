@@ -41,8 +41,8 @@ uint8_t const* tud_descriptor_device_cb(void) { return (uint8_t const*) &desc_de
 char const* string_desc_arr [] =
 {
   (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
-  "D",                   // 1: Manufacturer
-  "rp2040-can",          // 2: Product
+  "Adafruit",            // 1: Manufacturer
+  "RP2040 CAN Bus Feather",      // 2: Product
   "123456",              // 3: Serials, should use chip ID
   "CDC",                 // 4: CDC Interface
   "CDC",                 // 4: CDC Interface
