@@ -263,7 +263,7 @@ int main() {
                     handle_rx(rxn);
                     // Non-blocking signal to the other core
                     if (multicore_fifo_wready()) {
-                        multicore_fifo_push_blocking(urgb_u32(0, BRIGHTNESS, 0));
+                        multicore_fifo_push_blocking(urgb_u32(0, BRIGHTNESS, 0)); // Green
                     }
                 }
             }
@@ -323,7 +323,7 @@ int main() {
 
                 // Non-blocking signal to the other core
                 if (multicore_fifo_wready()) {
-                    multicore_fifo_push_blocking(urgb_u32(0, 0, BRIGHTNESS)); //Yellow
+                    multicore_fifo_push_blocking(urgb_u32(0, 0, BRIGHTNESS)); //Blue
                 }
             }
         }
