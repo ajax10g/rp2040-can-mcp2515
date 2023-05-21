@@ -28,7 +28,7 @@ enum mcp2515_mode_t {
 #define MCP2515_RX_BUFS 2
 #define MCP2515_TX_BUFS 3
 
-#define FIFO_TOKEN 123
+#define FIFO_TOKEN 0
 #define LED_MS 3 // On/Off duration of the LED in milliseconds
 
 #define IS_RGBW true
@@ -85,14 +85,14 @@ static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void core1_entry(){
-    uint32_t token; //unused variable
+    uint32_t color; //unused variable
 
     while(true){
-        token = multicore_fifo_pop_blocking();
+        color = multicore_fifo_pop_blocking();
 
         // Turn ON the Tx Act LED
         /*gpio_put(PICO_DEFAULT_LED_PIN, 1);*/
-        put_pixel(urgb_u32(0, BRIGHTNESS, 0)); // Green
+        put_pixel(color); // Green
         sleep_ms(LED_MS);
 
         // Turn OFF the Tx Act LED
@@ -261,6 +261,10 @@ int main() {
             for(size_t rxn = 0; rxn < MCP2515_RX_BUFS; rxn++) {
                 if(status & (1 << rxn)) {
                     handle_rx(rxn);
+                    // Non-blocking signal to the other core
+                    if (multicore_fifo_wready()) {
+                        multicore_fifo_push_blocking(urgb_u32(0, BRIGHTNESS, 0));
+                    }
                 }
             }
 
@@ -318,8 +322,9 @@ int main() {
                 spi_transmit(tx, NULL, 1);
 
                 // Non-blocking signal to the other core
-                if (multicore_fifo_wready())
-                    multicore_fifo_push_blocking(FIFO_TOKEN);
+                if (multicore_fifo_wready()) {
+                    multicore_fifo_push_blocking(urgb_u32(0, 0, BRIGHTNESS)); //Yellow
+                }
             }
         }
     }
