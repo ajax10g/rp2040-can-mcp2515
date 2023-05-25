@@ -4,6 +4,9 @@ project(rp2040-can-mcp2515 C CXX ASM)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 
+#list(APPEND PICO_CONFIG_HEADER_FILES ../../../../adafruit_feather_can_rp2040.h)
+list(APPEND PICO_CONFIG_HEADER_FILES ${CUSTOM_BOARD_CONFIG_HEADER_FILES})
+
 pico_sdk_init()
 
 add_executable(rp2040-can-mcp2515

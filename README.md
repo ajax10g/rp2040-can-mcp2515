@@ -2,26 +2,24 @@
 
 Raspberry Pico (RP2040) gs_usb compatible firmware interfacing CAN bus via cheap MCP2515 CAN controller.
 
-<img src="docs/box.jpg" height="250px">
+<img src="docs/rp2040-can-bus.jpg" height="250px">
 
 
 ## Hardware
-- Raspberry Pico (RP2040)
-- MCP2515 CAN module
+- ~~Raspberry Pico (RP2040)~~
+- ~~MCP2515 CAN module~~
+- Adafruit RP2040 CAN Bus Feather
 
-CAN Transceiver TJA1050 on CAN module requires 5V, but Raspberry Pico is not 5V tolerant. So the path on the module should be cut off and 5V wire should be soldered directly on TJA1050 Pin 3 like on the following image:
-<img src="docs/module_fix.jpg" height="250px">
+<!--CAN Transceiver TJA1050 on CAN module requires 5V, but Raspberry Pico is not 5V tolerant. So the path on the module should be cut off and 5V wire should be soldered directly on TJA1050 Pin 3 like on the following image:-->
+<!--<img src="docs/module_fix.jpg" height="250px">-->
 
-| MCP2515 CAN module     | Raspberry Pico |
+| MCP2515 onboard        | RP2040 CAN Bus |
 |------------------------|----------------|
-| TJA1050 VCC 5V - Pin 3 | VBUS           |
-| VCC                    | 3v3 OUT        |
-| GND                    | GND            |
-| SS                     | GP17           |
-| SO                     | GP16           |
-| SI                     | GP19           |
-| SCK                    | GP18           |
-| INT                    | GP20           |
+| SS                     | GP19           |
+| SO                     | GP8            |
+| SI                     | GP15           |
+| SCK                    | GP14           |
+| INT                    | GP22           |
 
 1 Mbit bitrate can be enabled by replacing CAN module crystal with 20 Mhz one and changing `MCP2515_OSC_FREQ` variable.
 
@@ -32,7 +30,7 @@ CAN Transceiver TJA1050 on CAN module requires 5V, but Raspberry Pico is not 5V 
 ```sh
 $ mkdir build
 $ cd build
-$ cmake ..
+$ cmake -DPICO_BOARD=adafruit_feather_rp2040 -DCUSTOM_BOARD_CONFIG_HEADER_FILES=$PWD/../adafruit_feather_can_rp2040.h ..
 $ make -j$(nproc)
 ```
 
