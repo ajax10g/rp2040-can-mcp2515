@@ -11,6 +11,12 @@
 #include "hardware/clocks.h"
 #include "ws2812.pio.h"
 
+#include "hardware/i2c.h"
+#include "mcp23017_interface.h"
+#include "custom_functions.h"
+#define MCP_ALL_PINS_OUTPUT 0x00
+
+
 struct usb_control_out_t {
     uint8_t bRequest;
     void *buffer;
@@ -73,31 +79,53 @@ struct usb_control_out_t usb_control_out[] = {
     {GS_USB_BREQ_MODE, &device_mode, sizeof(device_mode)},
 };
 
-static inline void put_pixel(uint32_t pixel_grb) {
-    pio_sm_put_blocking(pio0, 0, pixel_grb << 8u);
-}
+enum can_direction_t {
+    TX,
+    RX,
+};
+typedef struct inter_cores_token {
+    uint32_t tx_color;
+    uint32_t rx_color;
+    Mcp23017Handle mcpx[4];
+}inter_cores_token_t;
+inter_cores_token_t TOKEN;
+uint32_t ERR_LED = 0;
 
-static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {
-    return
-            ((uint32_t) (r) << 8) |
-            ((uint32_t) (g) << 16) |
-            (uint32_t) (b);
-}
+/*static inline void put_pixel(uint32_t pixel_grb) {*/
+/*    pio_sm_put_blocking(pio0, 0, pixel_grb << 8u);*/
+/*}*/
+
+/*static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {*/
+/*    return*/
+/*            ((uint32_t) (r) << 8) |*/
+/*            ((uint32_t) (g) << 16) |*/
+/*            (uint32_t) (b);*/
+/*}*/
 
 void core1_entry(){
-    uint32_t color; //unused variable
+    uint32_t color;
+    enum can_direction_t direction;
+    inter_cores_token_t *token = &TOKEN;
 
     while(true){
-        color = multicore_fifo_pop_blocking();
+        /*color = multicore_fifo_pop_blocking();*/
+        direction = (enum can_direction_t)multicore_fifo_pop_blocking();
+        if (direction==TX) {
+            color = token->tx_color; 
+        }else {
+            color = token->rx_color;
+            mcp23017_set_all_output_bits(token->mcpx[0], 0xff);
+        }
 
-        // Turn ON the Tx Act LED
         /*gpio_put(PICO_DEFAULT_LED_PIN, 1);*/
-        put_pixel(color); // Green
+        // Turn ON the WS2812B LEDs
+        put_pixel(color);
         sleep_ms(LED_MS);
 
-        // Turn OFF the Tx Act LED
         /*gpio_put(PICO_DEFAULT_LED_PIN, 0);*/
+        // Turn OFF the WS2812B LEDs
         put_pixel(urgb_u32(0, 0, 0)); // OFF
+        mcp23017_set_all_output_bits(token->mcpx[0], 0);
         sleep_ms(LED_MS);
     }
 }
@@ -239,6 +267,30 @@ int main() {
     ws2812_program_init(pio, sm, offset, PICO_DEFAULT_WS2812_PIN, 800000, IS_RGBW);
 
 
+    // IO Expanders
+    Mcp23017Handle mcp0 = create_mcp23017(i2c1, 0x20);
+    i2c_init(i2c1, 400000/*baudrate*/); // returns the actual baudrate
+    gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
+    gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
+
+    if(!i2c_probe(i2c1, 0x20)){
+        ERR_LED = BRIGHTNESS;
+        put_pixel(urgb_u32(0, 0, 0)); // Red if ERR_LED
+    }
+
+    (void)mcp23017_setup(mcp0, true, false);
+    (void)mcp23017_set_io_direction(mcp0, MCP_ALL_PINS_OUTPUT);
+    mcp23017_set_all_output_bits(mcp0, 0);
+    /*mcp23017_set_output_bit_for_pin(mcp0, 0, true);*/
+    /*mcp23017_set_output_bit_for_pin(mcp0, 1, true);*/
+    inter_cores_token_t *token = &TOKEN;
+    token->tx_color = urgb_u32(ERR_LED, 0, BRIGHTNESS); // Blue
+    token->rx_color = urgb_u32(ERR_LED, BRIGHTNESS, 0); // Green
+    token->mcpx[0] = mcp0;
+
+
     // Enable the other core
     multicore_launch_core1(core1_entry);
 
@@ -263,7 +315,8 @@ int main() {
                     handle_rx(rxn);
                     // Non-blocking signal to the other core
                     if (multicore_fifo_wready()) {
-                        multicore_fifo_push_blocking(urgb_u32(0, BRIGHTNESS, 0)); // Green
+                        /*multicore_fifo_push_blocking(urgb_u32(0, BRIGHTNESS, 0)); // Green*/
+                        multicore_fifo_push_blocking(RX);
                     }
                 }
             }
@@ -323,7 +376,8 @@ int main() {
 
                 // Non-blocking signal to the other core
                 if (multicore_fifo_wready()) {
-                    multicore_fifo_push_blocking(urgb_u32(0, 0, BRIGHTNESS)); //Blue
+                    /*multicore_fifo_push_blocking(urgb_u32(0, 0, BRIGHTNESS)); //Blue*/
+                    multicore_fifo_push_blocking(TX);
                 }
             }
         }
