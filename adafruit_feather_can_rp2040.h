@@ -80,6 +80,10 @@
 #define PICO_DEFAULT_SPI_CSN_PIN 19
 #endif
 
+#ifndef PICO_DEFAULT_SPI_IRQN_PIN
+#define PICO_DEFAULT_SPI_IRQN_PIN 22
+#endif
+
 //------------- FLASH -------------//
 
 // Use slower generic flash access

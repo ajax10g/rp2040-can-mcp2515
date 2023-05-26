@@ -39,7 +39,7 @@ enum mcp2515_mode_t {
 
 #define IS_RGBW true
 #define NUM_PIXELS 150
-#define BRIGHTNESS 32
+#define BRIGHTNESS 64
 
 const static uint16_t MCP2515_CMD_RESET = 0b11000000;
 const static uint16_t MCP2515_CMD_WRITE = 0b00000010;
@@ -65,8 +65,8 @@ const static uint8_t MCP2515_RXB0CTRL_BUKT = 1 << 2;
 const uint32_t CAN_STDMSGID_MAX = 0x7FF;
 const uint8_t SIDL_EXTENDED_MSGID = 1U << 3U;
 
-const static uint MCP2515_IRQ_GPIO = 22; /*clpham: was=20, should be 22*/
-const static uint32_t MCP2515_OSC_FREQ = 16000000; /*clpham: was 8000000*/
+const static uint MCP2515_IRQ_GPIO = PICO_DEFAULT_SPI_IRQN_PIN;
+const static uint32_t MCP2515_OSC_FREQ = 16000000; /*clpham: For the Adafruit RP2040 CAN Bus Feather*/
 
 volatile struct gs_host_frame tx[MCP2515_TX_BUFS];
 
@@ -117,12 +117,10 @@ void core1_entry(){
             mcp23017_set_all_output_bits(token->mcpx[0], 0xff);
         }
 
-        /*gpio_put(PICO_DEFAULT_LED_PIN, 1);*/
         // Turn ON the WS2812B LEDs
         put_pixel(color);
         sleep_ms(LED_MS);
 
-        /*gpio_put(PICO_DEFAULT_LED_PIN, 0);*/
         // Turn OFF the WS2812B LEDs
         put_pixel(urgb_u32(0, 0, 0)); // OFF
         mcp23017_set_all_output_bits(token->mcpx[0], 0);
