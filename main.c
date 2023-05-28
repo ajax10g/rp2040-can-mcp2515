@@ -40,6 +40,7 @@ enum mcp2515_mode_t {
 #define IS_RGBW true
 #define NUM_PIXELS 150
 #define BRIGHTNESS 64
+#define MCP23017_INPUT_BYTES 6 // The number of input bits in bytes from the four MCP23017 IO Expanders
 
 const static uint16_t MCP2515_CMD_RESET = 0b11000000;
 const static uint16_t MCP2515_CMD_WRITE = 0b00000010;
@@ -68,7 +69,7 @@ const uint8_t SIDL_EXTENDED_MSGID = 1U << 3U;
 const static uint MCP2515_IRQ_GPIO = PICO_DEFAULT_SPI_IRQN_PIN;
 const static uint32_t MCP2515_OSC_FREQ = 16000000; /*clpham: For the Adafruit RP2040 CAN Bus Feather*/
 
-volatile struct gs_host_frame tx[MCP2515_TX_BUFS];
+volatile struct gs_host_frame Tx[MCP2515_TX_BUFS];
 
 static uint32_t byte_order = 0;
 static struct gs_device_bittiming device_bittiming;
@@ -80,8 +81,8 @@ struct usb_control_out_t usb_control_out[] = {
 };
 
 enum can_direction_t {
-    TX,
-    RX,
+    TX_ENUM,
+    RX_ENUM,
 };
 typedef struct inter_cores_token {
     uint32_t tx_color;
@@ -91,16 +92,6 @@ typedef struct inter_cores_token {
 inter_cores_token_t TOKEN;
 uint32_t ERR_LED = 0;
 
-/*static inline void put_pixel(uint32_t pixel_grb) {*/
-/*    pio_sm_put_blocking(pio0, 0, pixel_grb << 8u);*/
-/*}*/
-
-/*static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {*/
-/*    return*/
-/*            ((uint32_t) (r) << 8) |*/
-/*            ((uint32_t) (g) << 16) |*/
-/*            (uint32_t) (b);*/
-/*}*/
 
 void core1_entry(){
     uint32_t color;
@@ -108,13 +99,12 @@ void core1_entry(){
     inter_cores_token_t *token = &TOKEN;
 
     while(true){
-        /*color = multicore_fifo_pop_blocking();*/
         direction = (enum can_direction_t)multicore_fifo_pop_blocking();
-        if (direction==TX) {
+        if (direction==TX_ENUM) {
             color = token->tx_color; 
         }else {
             color = token->rx_color;
-            mcp23017_set_all_output_bits(token->mcpx[0], 0xff);
+            mcp23017_set_all_output_bits(token->mcpx[0], 0xff); // TO BE REMOVED
         }
 
         // Turn ON the WS2812B LEDs
@@ -123,7 +113,7 @@ void core1_entry(){
 
         // Turn OFF the WS2812B LEDs
         put_pixel(urgb_u32(0, 0, 0)); // OFF
-        mcp23017_set_all_output_bits(token->mcpx[0], 0);
+        mcp23017_set_all_output_bits(token->mcpx[0], 0); // TO BE REMOVED
         sleep_ms(LED_MS);
     }
 }
@@ -187,8 +177,8 @@ uint8_t mcp2515_canstat_to_irqs(uint8_t canstat) {
 }
 
 ssize_t mcp2515_get_free_tx() {
-    for(size_t i = 0; i < sizeof(tx) / sizeof(*tx); i++) {
-        if(tx[i].echo_id == -1) {
+    for(size_t i = 0; i < sizeof(Tx) / sizeof(*Tx); i++) {
+        if(Tx[i].echo_id == -1) {
             return i;
         }
     }
@@ -233,13 +223,38 @@ void handle_rx(uint8_t rxn) {
     tud_vendor_write(&rxf, sizeof(rxf));
     tud_vendor_flush(); /*clpham: Added*/
 }
+void handle_5fd(struct gs_host_frame *frame) {
+    uint8_t rx[14] = {0};
+    // Code to fetch the MCP23017s' inputs into the buffer rx
+    // ...
+
+    //Mock code for now
+    int v;
+    uint8_t *p = &rx[6]; // Start of data field
+    for(v=0x11; v<=0x66/*6 bytes*/; v+=0x11, p++){
+        *p = v;
+    }
+
+    struct gs_host_frame rxf = {0};
+    rxf.echo_id = -1;
+    rxf.can_dlc = 6; // Hardcode to 6-bytes for four MCP23017s
+    rxf.flags = 0;
+    rxf.channel = 0;
+
+    rxf.can_id = 0x3ff; // Hardcode for Group 1 Message, Message ID=0b1111, Source MAC ID=0b111111
+    memcpy(rxf.data, &rx[6], rxf.can_dlc);
+
+    tud_vendor_write(&rxf, sizeof(rxf));
+    tud_vendor_flush(); //clpham: Added
+}
+
 
 int main() {
     stdio_init_all();
     tusb_init();
 
-    for(size_t i = 0; i < sizeof(tx) / sizeof(*tx); i++) {
-        tx[i].echo_id = -1;
+    for(size_t i = 0; i < sizeof(Tx) / sizeof(*Tx); i++) {
+        Tx[i].echo_id = -1;
     }
 
     spi_init(spi_default, 1000 * 1000);
@@ -311,21 +326,20 @@ int main() {
             for(size_t rxn = 0; rxn < MCP2515_RX_BUFS; rxn++) {
                 if(status & (1 << rxn)) {
                     handle_rx(rxn);
-                    // Non-blocking signal to the other core
+                    // Blink the Green Rx LED
                     if (multicore_fifo_wready()) {
-                        /*multicore_fifo_push_blocking(urgb_u32(0, BRIGHTNESS, 0)); // Green*/
-                        multicore_fifo_push_blocking(RX);
+                        multicore_fifo_push_blocking(RX_ENUM);
                     }
                 }
             }
 
             for(size_t txn = 0; txn < MCP2515_TX_BUFS; txn++) {
                 if(status & (1U << (3 + txn * 2))) {
-                    assert(tx[txn].echo_id != -1);
+                    assert(Tx[txn].echo_id != -1);
 
-                    tud_vendor_write(&tx[txn], sizeof(tx[txn]));
+                    tud_vendor_write(&Tx[txn], sizeof(Tx[txn]));
                     tud_vendor_flush(); /*clpham: Added*/
-                    tx[txn].echo_id = -1;
+                    Tx[txn].echo_id = -1;
 
                     // ack irq
                     mcp2515_bit_modify(MCP2515_CANINTF, 1 << (2 + txn), 0);
@@ -338,7 +352,7 @@ int main() {
         if ( tud_vendor_available() ) {
             ssize_t txn = mcp2515_get_free_tx();
             if(txn >= 0) {
-                struct gs_host_frame *frame = &tx[txn];
+                struct gs_host_frame *frame = &Tx[txn];
                 uint32_t count = tud_vendor_read(frame, sizeof(*frame));
                 if(count != sizeof(*frame)) {
                     for(;;);
@@ -348,7 +362,25 @@ int main() {
                 uint8_t tx[hdr_size + sizeof(frame->data)];
                 memset(tx, 0, sizeof(tx));
                 tx[0] = 0b01000000 | (txn == 0 ? 0 : (1 << txn));
+
                 if(frame->can_id <= CAN_STDMSGID_MAX) {
+                    if(frame->can_id == 0x5fd){
+                        // clpham:
+                        // ACK to the USB port?  Without them the traffic would
+                        // stop after receiving 10 packets of this can_id.
+                        tud_vendor_write(&Tx[txn], sizeof(Tx[txn]));
+                        tud_vendor_flush(); /*clpham: Added*/
+                        Tx[txn].echo_id = -1;
+
+                        handle_5fd(frame);
+
+                        // Blink the Green Rx LED
+                        if (multicore_fifo_wready()) {
+                            multicore_fifo_push_blocking(RX_ENUM);
+                        }
+                        continue; // From the top for(;;) loop
+                    }
+
                     tx[1] = frame->can_id >> 3U; // SIDH
                     tx[2] = (frame->can_id & 0b111) << 5U; //SIDL
                 } else {
@@ -363,6 +395,7 @@ int main() {
                     // msgid 7..0
                     tx[4] = frame->can_id;
                 }
+
                 tx[5] = frame->can_dlc; // DLC
                 memcpy(&tx[6], frame->data, frame->can_dlc);
 
@@ -372,10 +405,9 @@ int main() {
                 tx[0] = 0b10000000U | (1U << txn);
                 spi_transmit(tx, NULL, 1);
 
-                // Non-blocking signal to the other core
+                // Blink the Blue Tx LED
                 if (multicore_fifo_wready()) {
-                    /*multicore_fifo_push_blocking(urgb_u32(0, 0, BRIGHTNESS)); //Blue*/
-                    multicore_fifo_push_blocking(TX);
+                    multicore_fifo_push_blocking(TX_ENUM);
                 }
             }
         }
