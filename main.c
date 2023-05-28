@@ -14,7 +14,6 @@
 #include "hardware/i2c.h"
 #include "mcp23017_interface.h"
 #include "custom_functions.h"
-#define MCP_ALL_PINS_OUTPUT 0x00
 
 
 struct usb_control_out_t {
@@ -104,7 +103,7 @@ void core1_entry(){
             color = token->tx_color; 
         }else {
             color = token->rx_color;
-            mcp23017_set_all_output_bits(token->mcpx[0], 0xff); // TO BE REMOVED
+            //mcp23017_set_all_output_bits(token->mcpx[0], 0xff); // TO BE REMOVED
         }
 
         // Turn ON the WS2812B LEDs
@@ -113,7 +112,7 @@ void core1_entry(){
 
         // Turn OFF the WS2812B LEDs
         put_pixel(urgb_u32(0, 0, 0)); // OFF
-        mcp23017_set_all_output_bits(token->mcpx[0], 0); // TO BE REMOVED
+        //mcp23017_set_all_output_bits(token->mcpx[0], 0); // TO BE REMOVED
         sleep_ms(LED_MS);
     }
 }
@@ -227,12 +226,25 @@ void handle_5fd(struct gs_host_frame *frame) {
     uint8_t rx[14] = {0};
     // Code to fetch the MCP23017s' inputs into the buffer rx
     // ...
+    inter_cores_token_t *token = &TOKEN;
+    int mcp23017_statuses[4];
+    int mcp23017_values[4];
+    for(int i=0; i<1; i++){
+        mcp23017_statuses[i] = mcp23017_update_and_get_input_values(token->mcpx[i]);
+        if(mcp23017_statuses[i]==PICO_ERROR_NONE){
+            mcp23017_values[i] = mcp23017_get_last_input_pin_values(token->mcpx[i]);
+        }
+    }
 
     //Mock code for now
     int v;
     uint8_t *p = &rx[6]; // Start of data field
     for(v=0x11; v<=0x66/*6 bytes*/; v+=0x11, p++){
-        *p = v;
+        switch(v){
+            case 0x11: *p = mcp23017_values[0] & 0xff; break;
+            case 0x22: *p = mcp23017_values[0] >>8; break;
+            default: *p = v;
+        }
     }
 
     struct gs_host_frame rxf = {0};
@@ -294,8 +306,9 @@ int main() {
     }
 
     (void)mcp23017_setup(mcp0, true, false);
-    (void)mcp23017_set_io_direction(mcp0, MCP_ALL_PINS_OUTPUT);
-    mcp23017_set_all_output_bits(mcp0, 0);
+    (void)mcp23017_set_io_direction(mcp0, MCP_ALL_PINS_INPUT);
+    (void)mcp23017_set_pullup(mcp0, MCP_ALL_PINS_PULL_UP);
+    /*mcp23017_set_all_output_bits(mcp0, 0);*/
     /*mcp23017_set_output_bit_for_pin(mcp0, 0, true);*/
     /*mcp23017_set_output_bit_for_pin(mcp0, 1, true);*/
     inter_cores_token_t *token = &TOKEN;

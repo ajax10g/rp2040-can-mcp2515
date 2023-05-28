@@ -1,6 +1,10 @@
 #pragma once
 #include "hardware/i2c.h"
 
+#define MCP_ALL_PINS_OUTPUT 0x00
+#define MCP_ALL_PINS_INPUT 0xffff
+#define MCP_ALL_PINS_PULL_UP 0xffff
+
 #ifdef __cplusplus
 extern "C"{
 #endif
