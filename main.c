@@ -12,7 +12,9 @@
 #include "ws2812.pio.h"
 
 #include "hardware/i2c.h"
+#ifdef MCP23017
 #include "mcp23017_interface.h"
+#endif
 #include "custom_functions.h"
 
 
@@ -39,7 +41,9 @@ enum mcp2515_mode_t {
 #define IS_RGBW true
 #define NUM_PIXELS 150
 #define BRIGHTNESS 64
+#ifdef MCP23017
 #define MCP23017_INPUT_BYTES 6 // The number of input bits in bytes from the four MCP23017 IO Expanders
+#endif
 
 const static uint16_t MCP2515_CMD_RESET = 0b11000000;
 const static uint16_t MCP2515_CMD_WRITE = 0b00000010;
@@ -86,7 +90,9 @@ enum can_direction_t {
 typedef struct inter_cores_token {
     uint32_t tx_color;
     uint32_t rx_color;
+#ifdef MCP23017
     Mcp23017Handle mcpx[4];
+#endif
 }inter_cores_token_t;
 inter_cores_token_t TOKEN;
 uint32_t ERR_LED = 0;
@@ -103,7 +109,6 @@ void core1_entry(){
             color = token->tx_color; 
         }else {
             color = token->rx_color;
-            //mcp23017_set_all_output_bits(token->mcpx[0], 0xff); // TO BE REMOVED
         }
 
         // Turn ON the WS2812B LEDs
@@ -112,7 +117,6 @@ void core1_entry(){
 
         // Turn OFF the WS2812B LEDs
         put_pixel(urgb_u32(0, 0, 0)); // OFF
-        //mcp23017_set_all_output_bits(token->mcpx[0], 0); // TO BE REMOVED
         sleep_ms(LED_MS);
     }
 }
@@ -222,6 +226,7 @@ void handle_rx(uint8_t rxn) {
     tud_vendor_write(&rxf, sizeof(rxf));
     tud_vendor_flush(); /*clpham: Added*/
 }
+#if MPC23017
 void handle_5fd(struct gs_host_frame *frame) {
     uint8_t rx[14] = {0};
     // Code to fetch the MCP23017s' inputs into the buffer rx
@@ -259,6 +264,7 @@ void handle_5fd(struct gs_host_frame *frame) {
     tud_vendor_write(&rxf, sizeof(rxf));
     tud_vendor_flush(); //clpham: Added
 }
+#endif // MPC23017
 
 
 int main() {
@@ -292,6 +298,7 @@ int main() {
     ws2812_program_init(pio, sm, offset, PICO_DEFAULT_WS2812_PIN, 800000, IS_RGBW);
 
 
+#ifdef MCP23017
     // IO Expanders
     Mcp23017Handle mcp0 = create_mcp23017(i2c1, 0x20);
     i2c_init(i2c1, 400000/*baudrate*/); // returns the actual baudrate
@@ -308,13 +315,14 @@ int main() {
     (void)mcp23017_setup(mcp0, true, false);
     (void)mcp23017_set_io_direction(mcp0, MCP_ALL_PINS_INPUT);
     (void)mcp23017_set_pullup(mcp0, MCP_ALL_PINS_PULL_UP);
-    /*mcp23017_set_all_output_bits(mcp0, 0);*/
-    /*mcp23017_set_output_bit_for_pin(mcp0, 0, true);*/
-    /*mcp23017_set_output_bit_for_pin(mcp0, 1, true);*/
-    inter_cores_token_t *token = &TOKEN;
-    token->tx_color = urgb_u32(ERR_LED, 0, BRIGHTNESS); // Blue
-    token->rx_color = urgb_u32(ERR_LED, BRIGHTNESS, 0); // Green
-    token->mcpx[0] = mcp0;
+    /*inter_cores_token_t *token = &TOKEN;*/
+    /*token->mcpx[0] = mcp0;*/
+    /*token->tx_color = urgb_u32(ERR_LED, 0, BRIGHTNESS); // Blue*/
+    /*token->rx_color = urgb_u32(ERR_LED, BRIGHTNESS, 0); // Green*/
+    TOKEN.mcpx[0] = mcp0;
+#endif //MCP23017
+    TOKEN.tx_color = urgb_u32(ERR_LED, 0, BRIGHTNESS); // Blue
+    TOKEN.rx_color = urgb_u32(ERR_LED, BRIGHTNESS, 0); // Green
 
 
     // Enable the other core
@@ -377,6 +385,7 @@ int main() {
                 tx[0] = 0b01000000 | (txn == 0 ? 0 : (1 << txn));
 
                 if(frame->can_id <= CAN_STDMSGID_MAX) {
+#if MPC23017
                     if(frame->can_id == 0x5fd){
                         // clpham:
                         // ACK to the USB port?  Without them the traffic would
@@ -393,9 +402,10 @@ int main() {
                         }
                         continue; // From the top for(;;) loop
                     }
-
+#endif // MPC23017
                     tx[1] = frame->can_id >> 3U; // SIDH
                     tx[2] = (frame->can_id & 0b111) << 5U; //SIDL
+
                 } else {
                     // msgid 27..20
                     tx[1] = frame->can_id >> 21U;
